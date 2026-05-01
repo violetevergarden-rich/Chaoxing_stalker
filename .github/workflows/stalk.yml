@@ -2,8 +2,8 @@ name: ChaoXing Stalker
 
 on:
   schedule:
-    # UTC 0:00 = 北京时间 8:00, UTC 12:00 = 北京时间 20:00
-    - cron: "0 0,12 * * *"
+    # 每 43 分钟唤醒一次，实际是否通知由 run_hours 窗口判断决定
+    - cron: "43 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -31,6 +31,13 @@ jobs:
           echo "CONFIG_JSON is set ($(echo "$CONFIG_JSON" | wc -c) bytes)"
         env:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: stalker_state.json
+          key: stalker-state-${{ github.run_id }}
+          restore-keys: stalker-state-
 
       - name: Run check
         env:

@@ -8,9 +8,10 @@ A homework stalker for the ChaoXing (超星学习通) platform. It checks all co
 
 ## Features / 功能
 
-- 多用户支持 — 一个配置文件管理多个超星账号
+- 多用户支持 — 一个配置文件管理多个超星账号，每个用户独立通知时间
 - 多种通知渠道 — QQ 邮箱 SMTP、ServerChan 微信推送
 - 变更检测 — SHA256 校验和，只在新增作业时通知
+- 时间窗口 — 每用户独立 `run_hours`，只在北京时间目标 ± 窗口内执行
 - 运行模式 — 单次检查 / 守护进程轮询 / GitHub Actions 定时
 - 配置验证 — 启动时检查配置完整性
 - 容错重试 — 网络异常自动重试（指数退避）
@@ -39,7 +40,8 @@ python3 stalker.py --one-shot
 {
   "schedule": {
     "mode": "one_shot",
-    "interval_minutes": 60
+    "interval_minutes": 60,
+    "window_minutes": 30
   },
   "users": [
     {
@@ -67,13 +69,16 @@ python3 stalker.py --one-shot
         "notify_on_first_run": true,
         "notify_on_no_change": false,
         "notify_on_error": true
-      }
+      },
+      "run_hours": [8, 20]
     }
   ]
 }
 ```
 
 - `schedule.mode` — `"one_shot"` 运行一次后退出；`"daemon"` 按间隔持续轮询
+- `schedule.window_minutes` — 时间窗口容差，当前北京时间距离目标小时在 ±N 分钟内则执行（默认 30）
+- `run_hours` — 该用户的通知目标小时（北京时间 0-23），不配则每次唤醒都执行
 - Email `authorization_code` 是 QQ 邮箱 SMTP 授权码，不是邮箱密码
 - ServerChan `send_key` 从 [sct.ftqq.com](https://sct.ftqq.com) 获取
 
@@ -98,13 +103,30 @@ python3 chaoXingStalker.py <username> <password>
 
 ## GitHub Actions
 
-通过 GitHub Actions 每天定时运行，无需常驻服务器。
+通过 GitHub Actions 定时运行，无需常驻服务器。工作流每 43 分钟唤醒一次，实际是否通知由每用户的 `run_hours` 窗口判断决定。通知状态通过 `actions/cache` 跨 run 持久化，同一目标时间段不会重复通知。
 
 1. Fork 本仓库
 2. 在 Settings → Secrets → Actions 中添加 `CONFIG_JSON` secret（内容为 `stalker_config.json` 的完整 JSON）
-3. GitHub Actions 将在北京时间 8:00 和 20:00 自动运行
+3. 默认 `run_hours: [8, 20]`，可随时编辑 secret 中的 JSON 调整通知时间
 
-修改 `.github/workflows/stalk.yml` 中的 cron 表达式可调整执行时间（UTC 时区）。
+也可以通过 `workflow_dispatch` 在 GitHub Actions 页面手动触发。
+
+## Time Window / 时间窗口机制
+
+工作流每小时唤醒一次，但只在配置的时间窗口内执行检查：
+
+```
+唤醒时间 07:42, run_hours=[8], window_minutes=30
+  → 距 08:00 差 18min，在窗口内 → 执行
+
+唤醒时间 08:12, run_hours=[8], window_minutes=30
+  → 距 08:00 差 12min，在窗口内 → 查 state 发现已发过 → 跳过
+
+唤醒时间 09:30, run_hours=[8, 20], window_minutes=30
+  → 距任何目标都超过 30min → 跳过
+```
+
+每个用户的 `run_hours` 独立，例如张三 `[8]` 早上通知，李四 `[20]` 晚上通知。
 
 ## Notification Behaviour / 通知行为
 

@@ -21,6 +21,7 @@ from notifiers import create_notifiers
 
 CONFIG_PATH = "stalker_config.json"
 STATE_PATH = "stalker_state.json"
+BJT_TZ = datetime.timezone(datetime.timedelta(hours=8))
 
 
 # ── 配置 ──────────────────────────────────────────────────
@@ -31,6 +32,7 @@ CONFIG_TEMPLATE = {
     "schedule": {
         "mode": "one_shot",
         "interval_minutes": 60,
+        "window_minutes": 30,
     },
     "users": [
         {
@@ -59,6 +61,7 @@ CONFIG_TEMPLATE = {
                 "notify_on_no_change": False,
                 "notify_on_error": True,
             },
+            "run_hours": [8, 20],
         }
     ],
 }
@@ -96,6 +99,9 @@ def validate_config(config: dict):
         errors.append("schedule.interval_minutes 必须 >= 1")
     if schedule.get("mode") not in ("one_shot", "daemon"):
         errors.append('schedule.mode 必须是 "one_shot" 或 "daemon"')
+    wm = schedule.get("window_minutes")
+    if wm is not None and (not isinstance(wm, int) or wm < 0 or wm > 120):
+        errors.append("schedule.window_minutes 必须是 0-120 的整数")
 
     users = config.get("users", [])
     if not users:
@@ -134,6 +140,20 @@ def validate_config(config: dict):
 
         if not has_enabled:
             errors.append(f"{prefix}: 至少启用一种通知方式（email 或 serverchan）")
+
+        run_hours = user.get("run_hours")
+        if run_hours is not None:
+            if not isinstance(run_hours, list) or not run_hours:
+                errors.append(f"{prefix}.run_hours 必须是非空数组")
+            else:
+                seen = set()
+                for h in run_hours:
+                    if not isinstance(h, int) or h < 0 or h > 23:
+                        errors.append(f"{prefix}.run_hours 元素必须是 0-23 的整数，实际: {h}")
+                    elif h in seen:
+                        errors.append(f"{prefix}.run_hours 有重复值: {h}")
+                    else:
+                        seen.add(h)
 
     if errors:
         raise ValueError("配置验证失败:\n" + "\n".join(f"  - {e}" for e in errors))
@@ -180,6 +200,24 @@ def get_changed_assignments(
 ) -> list[dict]:
     old_by_id = {a["work_id"]: a for a in old_assignments if a.get("work_id")}
     return [a for a in new_assignments if a.get("work_id") not in old_by_id]
+
+
+# ── 时间窗口判断 ──────────────────────────────────────────
+
+
+def find_target_slot(run_hours: list[int], window_minutes: int) -> str | None:
+    now_bjt = datetime.datetime.now(BJT_TZ)
+    today = now_bjt.date()
+
+    for target_hour in run_hours:
+        for delta in (0, 1, -1):
+            target_date = today + datetime.timedelta(days=delta)
+            target = datetime.datetime.combine(
+                target_date, datetime.time(target_hour, 0), tzinfo=BJT_TZ
+            )
+            if abs((now_bjt - target).total_seconds()) / 60 <= window_minutes:
+                return f"{target.strftime('%Y-%m-%d')}-{target_hour}"
+    return None
 
 
 # ── 消息格式化 ────────────────────────────────────────────
@@ -335,13 +373,31 @@ def check_and_notify(
 
 def run_one_shot(config: dict):
     full_state = _load_or_init_state()
+    window_minutes = config.get("schedule", {}).get("window_minutes", 30)
+
     for user in config["users"]:
         try:
             username = user["chaoxing"]["username"]
+            run_hours = user.get("run_hours")
+
+            if run_hours:
+                slot = find_target_slot(run_hours, window_minutes)
+                if slot is None:
+                    print(f"[INFO] [{username}] 当前不在通知窗口内，跳过")
+                    continue
+                user_state = full_state["users"].get(username, {})
+                if user_state.get("last_notify_slot") == slot:
+                    print(f"[INFO] [{username}] 时间段 {slot} 已通知过，跳过")
+                    continue
+            else:
+                slot = None
+
             notifiers = create_notifiers(user)
             user_state = full_state["users"].get(username)
             new_state, ok = check_and_notify(user, notifiers, user_state)
             if new_state is not None:
+                if slot:
+                    new_state["last_notify_slot"] = slot
                 full_state["users"][username] = new_state
         except Exception as e:
             print(f"[ERROR] [{user.get('chaoxing', {}).get('username', '?')}] 处理失败: {e}")
@@ -350,6 +406,7 @@ def run_one_shot(config: dict):
 
 def run_daemon(config: dict):
     interval = config["schedule"]["interval_minutes"] * 60
+    window_minutes = config.get("schedule", {}).get("window_minutes", 30)
 
     print(f"[INFO] 守护进程启动，每 {config['schedule']['interval_minutes']} 分钟检查一次")
     print(f"[INFO] 共 {len(config['users'])} 个用户")
@@ -359,10 +416,26 @@ def run_daemon(config: dict):
         for user in config["users"]:
             try:
                 username = user["chaoxing"]["username"]
+                run_hours = user.get("run_hours")
+
+                if run_hours:
+                    slot = find_target_slot(run_hours, window_minutes)
+                    if slot is None:
+                        print(f"[INFO] [{username}] 当前不在通知窗口内，跳过")
+                        continue
+                    user_state = full_state["users"].get(username, {})
+                    if user_state.get("last_notify_slot") == slot:
+                        print(f"[INFO] [{username}] 时间段 {slot} 已通知过，跳过")
+                        continue
+                else:
+                    slot = None
+
                 notifiers = create_notifiers(user)
                 user_state = full_state["users"].get(username)
                 new_state, ok = check_and_notify(user, notifiers, user_state)
                 if new_state is not None:
+                    if slot:
+                        new_state["last_notify_slot"] = slot
                     full_state["users"][username] = new_state
             except Exception as e:
                 print(f"[ERROR] [{user.get('chaoxing', {}).get('username', '?')}] 处理失败: {e}")
