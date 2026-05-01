@@ -19,6 +19,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Verify config secret
+        run: |
+          if [ -z "$CONFIG_JSON" ]; then
+            echo "ERROR: CONFIG_JSON secret is empty or not set."
+            echo "Go to Settings → Secrets → Actions → New repository secret"
+            echo "Name: CONFIG_JSON"
+            echo "Value: (paste the full content of stalker_config.json)"
+            exit 1
+          fi
+          echo "CONFIG_JSON is set ($(echo "$CONFIG_JSON" | wc -c) bytes)"
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+
       - name: Run check
         env:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
