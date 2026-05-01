@@ -68,6 +68,12 @@ def load_config(path: str) -> dict:
     env_config = os.environ.get("CONFIG_JSON")
     if env_config:
         return json.loads(env_config)
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"配置文件 {path} 不存在，且环境变量 CONFIG_JSON 未设置。"
+            "\n在 GitHub Actions 中运行时，请在仓库 Secrets 中添加 CONFIG_JSON。"
+            "\n本地运行时，请运行 python3 stalker.py --init-config 生成配置模板。"
+        )
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
