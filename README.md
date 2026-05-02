@@ -135,7 +135,7 @@ cron 直接设在目标时刻，不配置 `run_hours`，每次触发必定执行
 |---|---|
 | 简单直接，cron 时间 = 通知时间 | 改时间需要 commit + push workflow |
 | 不会因窗口参数配错而漏通知 | 所有用户共用同一组触发时刻 |
-| 无额外心智负担 | 依赖 GitHub 准时调度（通常延迟 < 5 分钟） |
+| 无额外心智负担 | 高峰期可能延迟 10-50 分钟才执行（见下方说明） |
 
 #### 模式 B：Run_hours 窗口过滤
 
@@ -162,6 +162,16 @@ cron 设为高频唤醒（如每小时），由每用户的 `run_hours` + `windo
 | 多用户场景灵活 | 高于实际需要的 run 次数 |
 
 > **注意**: 模式 B 依赖 `cron 分钟数`、`window_minutes` 和 `run_hours` 三者配合。例如 `cron: "43 * * * *"` 配合 `window_minutes: 30` 和 `run_hours: [8]`，若 GitHub 延迟 40 分钟，实际运行时间可能滑出窗口导致漏通知。建议 `window_minutes` 不小于 45，或改用模式 A。
+
+### 关于 GitHub Actions Cron 延迟
+
+GitHub 官方文档明确说明 scheduled workflows 在负载高峰期间可能被推迟执行，且不提供准时 SLA。延迟原因：
+
+- **共享 runner 池** — 免费版 public repo 的 job 需要排队，高负载时延迟加长
+- **最低优先级** — `schedule` 触发事件的优先级低于 `push`、`PR`、`workflow_dispatch`
+- **无 SLA** — GitHub 只保证"最终会执行"，不保证准时
+
+实测中延迟 10-50 分钟属于正常范围，极端情况下可达数小时。这也是模式 B 存在的核心理由——用高频唤醒 + 宽窗口容忍不可控的调度延迟。模式 A 的用户需接受通知时间可能有半小时左右的偏差。
 
 ### 时间窗口机制（仅模式 B）
 
