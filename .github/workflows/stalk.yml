@@ -2,8 +2,8 @@ name: ChaoXing Stalker
 
 on:
   schedule:
-    # 每 43 分钟唤醒一次，实际是否通知由 run_hours 窗口判断决定
-    - cron: "43 * * * *"
+    # 北京时间 12:03 和 18:03（UTC 04:03 / 10:03，避开 :00 整点抢占）
+    - cron: "3 4,10 * * *"
   workflow_dispatch:
 
 jobs:
