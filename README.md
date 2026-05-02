@@ -8,10 +8,10 @@ A homework stalker for the ChaoXing (超星学习通) platform. It checks all co
 
 ## Features / 功能
 
-- 多用户支持 — 一个配置文件管理多个超星账号，每个用户独立通知时间
+- 多用户支持 — 一个配置文件管理多个超星账号，每个用户独立通知设置
 - 多种通知渠道 — QQ 邮箱 SMTP、ServerChan 微信推送
 - 变更检测 — SHA256 校验和，只在新增作业时通知
-- 时间窗口 — 每用户独立 `run_hours`，只在北京时间目标 ± 窗口内执行
+- 灵活调度 — 支持 cron 精确定时或 `run_hours` 窗口过滤两种模式
 - 运行模式 — 单次检查 / 守护进程轮询 / GitHub Actions 定时
 - 配置验证 — 启动时检查配置完整性
 - 容错重试 — 网络异常自动重试（指数退避）
@@ -103,30 +103,80 @@ python3 chaoXingStalker.py <username> <password>
 
 ## GitHub Actions
 
-通过 GitHub Actions 定时运行，无需常驻服务器。工作流每 43 分钟唤醒一次，实际是否通知由每用户的 `run_hours` 窗口判断决定。通知状态通过 `actions/cache` 跨 run 持久化，同一目标时间段不会重复通知。
+通过 GitHub Actions 定时运行，无需常驻服务器。有两种调度模式可选。
+
+### 部署步骤
 
 1. Fork 本仓库
 2. 在 Settings → Secrets → Actions 中添加 `CONFIG_JSON` secret（内容为 `stalker_config.json` 的完整 JSON）
-3. 默认 `run_hours: [8, 20]`，可随时编辑 secret 中的 JSON 调整通知时间
+3. 选择一种调度模式（见下方），修改 `.github/workflows/stalk.yml` 中的 cron 和 secret 中的 `run_hours`
 
 也可以通过 `workflow_dispatch` 在 GitHub Actions 页面手动触发。
 
-## Time Window / 时间窗口机制
+### 调度模式对比
 
-工作流每小时唤醒一次，但只在配置的时间窗口内执行检查：
+项目支持两种调度方式，按需选择：
 
-```
-唤醒时间 07:42, run_hours=[8], window_minutes=30
-  → 距 08:00 差 18min，在窗口内 → 执行
+#### 模式 A：Cron 精确定时（推荐大多数用户）
 
-唤醒时间 08:12, run_hours=[8], window_minutes=30
-  → 距 08:00 差 12min，在窗口内 → 查 state 发现已发过 → 跳过
+cron 直接设在目标时刻，不配置 `run_hours`，每次触发必定执行。
 
-唤醒时间 09:30, run_hours=[8, 20], window_minutes=30
-  → 距任何目标都超过 30min → 跳过
+```yaml
+# .github/workflows/stalk.yml — 每天北京时间 12:03 和 18:03
+- cron: "3 4,10 * * *"
 ```
 
-每个用户的 `run_hours` 独立，例如张三 `[8]` 早上通知，李四 `[20]` 晚上通知。
+```json
+// stalker_config.json — 不配 run_hours 字段
+{ "users": [{ "name": "张三", ... }] }
+```
+
+| 优点 | 缺点 |
+|---|---|
+| 简单直接，cron 时间 = 通知时间 | 改时间需要 commit + push workflow |
+| 不会因窗口参数配错而漏通知 | 所有用户共用同一组触发时刻 |
+| 无额外心智负担 | 依赖 GitHub 准时调度（通常延迟 < 5 分钟） |
+
+#### 模式 B：Run_hours 窗口过滤
+
+cron 设为高频唤醒（如每小时），由每用户的 `run_hours` + `window_minutes` 在代码层面判断是否实际执行。
+
+```yaml
+# .github/workflows/stalk.yml — 每小时唤醒一次
+- cron: "13 * * * *"
+```
+
+```json
+// stalker_config.json — 每用户独立 run_hours
+{ "users": [
+    { "name": "张三", "run_hours": [8, 20] },
+    { "name": "李四", "run_hours": [12, 18, 22] }
+] }
+```
+
+| 优点 | 缺点 |
+|---|---|
+| 每用户独立通知时间 | 设计复杂，参数需要配合（cron 分钟数 + window_minutes + run_hours） |
+| 改时间只需更新 Secret，不用 commit | 窗口判断依赖北京时间，cron 延迟太大会导致滑出窗口而漏通知 |
+| 容忍 GitHub Actions 调度延迟 | `last_notify_slot` 去重依赖 `actions/cache`，跨 run 不一定持久 |
+| 多用户场景灵活 | 高于实际需要的 run 次数 |
+
+> **注意**: 模式 B 依赖 `cron 分钟数`、`window_minutes` 和 `run_hours` 三者配合。例如 `cron: "43 * * * *"` 配合 `window_minutes: 30` 和 `run_hours: [8]`，若 GitHub 延迟 40 分钟，实际运行时间可能滑出窗口导致漏通知。建议 `window_minutes` 不小于 45，或改用模式 A。
+
+### 时间窗口机制（仅模式 B）
+
+```text
+cron 触发 07:13, 实际运行 07:15, run_hours=[8], window_minutes=30
+  → 距 08:00 差 45min → 不在窗口内 → 跳过
+
+cron 触发 07:43, 实际运行 07:46, run_hours=[8], window_minutes=30
+  → 距 08:00 差 14min → 在窗口内 → 执行检查
+
+cron 触发 08:13, 实际运行 08:15, run_hours=[8], window_minutes=30
+  → 距 08:00 差 15min → 在窗口内 → 但已发过 → 跳过
+```
+
+每用户 `run_hours` 独立，不同用户可以配不同的通知时段。
 
 ## Notification Behaviour / 通知行为
 
