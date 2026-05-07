@@ -2,14 +2,15 @@
 
 超星学习通未提交作业查询与提醒工具，支持多用户、多通知渠道、定时执行。
 
-查询超星学习通平台的所有课程，检查未提交的作业，并通过邮件或 ServerChan 推送通知。支持单次执行、守护进程轮询，以及 GitHub Actions 定时运行。
+查询超星学习通平台的所有课程，检查尚未提交且仍有剩余时间的作业，并通过邮件或 ServerChan 推送通知。已截止的作业会被自动过滤。支持单次执行、守护进程轮询，以及 GitHub Actions 定时运行。
 
-A homework stalker for the ChaoXing (超星学习通) platform. It checks all courses for unsubmitted assignments and sends notifications via email or ServerChan (WeChat push). Supports one-shot mode, daemon polling, and scheduled GitHub Actions.
+A homework stalker for the ChaoXing (超星学习通) platform. It checks all courses for unsubmitted assignments that still have remaining time and sends notifications via email or ServerChan (WeChat push). Past-deadline assignments are automatically filtered out. Supports one-shot mode, daemon polling, and scheduled GitHub Actions.
 
 ## Features / 功能
 
 - 多用户支持 — 一个配置文件管理多个超星账号，每个用户独立通知设置
 - 多种通知渠道 — QQ 邮箱 SMTP、ServerChan 微信推送
+- 截止过滤 — 自动过滤已截止作业，只提醒仍有剩余时间的未提交作业
 - 变更检测 — SHA256 校验和，只在新增作业时通知
 - 灵活调度 — 支持 cron 精确定时或 `run_hours` 窗口过滤两种模式
 - 运行模式 — 单次检查 / 守护进程轮询 / GitHub Actions 定时

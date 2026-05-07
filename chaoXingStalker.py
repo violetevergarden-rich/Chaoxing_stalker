@@ -198,16 +198,42 @@ class ChaoXingStalker:
 
     # ── 获取某课程的作业列表 ──────────────────────────────
 
+    def _get_work_enc(self, course_id: str, class_id: str, cpi: str) -> str:
+        """访问课程首页，提取 workEnc 加密参数"""
+        resp = self.session.get(
+            f"{self.BASE_MOOC}/mooc-ans/visit/stucoursemiddle",
+            params={
+                "courseid": course_id,
+                "clazzid": class_id,
+                "vc": 1,
+                "cpi": cpi,
+                "ismooc2": 1,
+                "v": 2,
+            },
+        )
+        resp.encoding = "utf-8"
+        soup = BeautifulSoup(resp.text, "html.parser")
+        el = soup.find("input", {"id": "workEnc"})
+        if not el:
+            raise RuntimeError("无法获取 workEnc，页面结构可能已变更")
+        return el.get("value", "")
+
     def _get_assignments_for_course(self, course: dict) -> list[dict]:
         """
-        访问作业列表页 (status=1 未完成)，提取所有作业项。
+        访问作业列表页，提取所有未完成作业项。
         返回 dict 列表，包含 title / status / work_id / answer_id / deadline / url。
         """
+        work_enc = self._get_work_enc(
+            course["course_id"], course["class_id"], course["cpi"]
+        )
+
         params = {
             "courseId": course["course_id"],
             "classId":  course["class_id"],
             "cpi":      course["cpi"],
-            "status":   1,  # 未完成
+            "enc":      work_enc,
+            "ut":       "s",
+            "status":   1,
         }
 
         resp = self.session.get(
@@ -245,17 +271,15 @@ class ChaoXingStalker:
 
     @staticmethod
     def _is_unsubmitted(item: dict) -> bool:
-        """
-        判断作业是否为"未提交"状态。
-        支持英文 "To be submitted" 和中文 "未提交"。
-        """
+        """作业状态为未提交，且仍有剩余时间（未截止）"""
         status = item.get("status", "").strip()
         if not status:
             return False
         status_lower = status.lower()
-        # 英文: "To be submitted" → should submit
-        # 中文: "未提交"
-        return ("to be" in status_lower and "submit" in status_lower) or "未提交" in status
+        if not (("to be" in status_lower and "submit" in status_lower) or "未交" in status):
+            return False
+        deadline = item.get("deadline", "")
+        return "剩余" in deadline
 
     @staticmethod
     def _parse_task_url(url: str) -> tuple[str, str]:
