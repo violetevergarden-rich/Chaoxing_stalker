@@ -1,5 +1,9 @@
 .claude/
 stalker_config.json
 stalker_state.json
+.env
+.env.*
+*.pem
+*.p12
 __pycache__/
 *.pyc

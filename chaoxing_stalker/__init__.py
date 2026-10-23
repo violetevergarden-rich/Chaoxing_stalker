@@ -1,0 +1,2 @@
+"""ChaoXing assignment reminder application."""
+

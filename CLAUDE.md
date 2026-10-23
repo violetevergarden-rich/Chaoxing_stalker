@@ -1,51 +1,66 @@
-# CLAUDE.md
+# Repository Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file gives coding agents and contributors the project-specific context needed to work in this repository.
 
 ## Project overview
 
-ChaoXing-Stalker queries the ChaoXing (超星学习通) platform for unsubmitted assignments and sends notifications via email or ServerChan (WeChat push). It runs as either a one-shot check or a polling daemon.
+ChaoXing Stalker checks configured 超星学习通 accounts for unsubmitted assignments that have not passed their deadlines. A run checks every configured user once, prints or sends the full current assignment list, updates optional desktop notes, and exits. Scheduling is handled outside the application.
 
-## Commands
+## Common commands
 
 ```bash
-# Single check (prints unsubmitted assignments)
-python3 chaoXingStalker.py <username> <password>
-
-# One-shot check with notifications (configure stalker_config.json first)
-python3 stalker.py --one-shot
-
-# Generate a fresh config template
-python3 stalker.py --init-config
-
-# Daemon mode (polls on an interval)
-python3 stalker.py
-
 # Install dependencies
 pip install -r requirements.txt
+
+# Generate the default config template
+python3 -m chaoxing_stalker --init-config
+
+# Check once with stalker_config.json
+python3 -m chaoxing_stalker
+
+# Use a different config file
+python3 -m chaoxing_stalker --config path/to/config.json
+
+# Run the unit test suite
+python3 -m unittest discover -v
 ```
 
-## Architecture
+The optional scraper compatibility entry point is `python3 -m chaoxing_stalker.compat <username> <password>`. Avoid putting real credentials in shell history.
 
+## Code layout
+
+```text
+chaoxing_stalker/
+  __main__.py             Module CLI (`python3 -m chaoxing_stalker`)
+  app.py                  Application setup and one-run orchestration
+  config.py               Config template, loading, and validation
+  assignment_types.py     Typed course and assignment records
+  message_formatter.py    Sorted notification formatting
+  retry.py                Exponential retry helper
+  sticky_notes.py         Cross-platform desktop note writer
+  compat.py               ChaoXingStalker compatibility class and CLI
+  chaoxing/               Authentication, HTTP client, and HTML parsing
+  notifiers/              Console, email, and ServerChan delivery
+  services/               Assignment check and notification flow
+tests/                    Unit tests
 ```
-chaoXingStalker.py    Core library: login, course/assignment scraping
-stalker.py            Daemon/scheduler: polling loop, change detection, CLI
-notifiers/
-  __init__.py         Notifier ABC + factory function (create_notifiers)
-  email_notifier.py   SMTP email delivery (QQ mail)
-  serverchan_notifier.py  ServerChan WeChat push
-stalker_config.json   User config (credentials, schedule, notification prefs)
-stalker_state.json    Persisted state (last checksum, last assignment list)
-```
 
-**`chaoXingStalker.py`** — The `ChaoXingStalker` class handles the full ChaoXing session lifecycle: AES-CBC password encryption (`u2oh6Vu^HWe4_AES` key), passport2 login flow, course list parsing via `courselistdata` AJAX API, and per-course assignment scraping (`/mooc2/work/list?status=1`). The public API is a single method `get_unsubmitted_assignments()` which returns a list of dicts with course name, title, deadline, work_id, answer_id, and URL.
+Keep application modules inside `chaoxing_stalker/`; the repository root should not contain Python modules. Use package-qualified imports such as `from chaoxing_stalker.config import ...` so the application can be launched with `python -m`.
 
-**`stalker.py`** — Wraps `ChaoXingStalker` in a polling loop with SHA256-based change detection. Compares `last_checksum` from `stalker_state.json` to detect new or changed assignments. Supports three notification behaviors: `notify_on_first_run`, `notify_on_no_change`, `notify_on_error`. The `retry` decorator handles transient network errors (exponential backoff, 3 attempts).
+## Behavior and boundaries
 
-**Notifier plugin system** — Each notifier extends `Notifier` (ABC) with `send(subject, message) -> bool` and a `from_config(config)` factory classmethod. `create_notifiers()` in `__init__.py` reads the config and instantiates all enabled notifiers. Adding a new notifier requires: create a new file in `notifiers/`, implement the `Notifier` interface, and wire it into `create_notifiers()`.
+- Each run fetches the full list of unsubmitted assignments. The service sorts known deadlines first in ascending order; unknown deadlines appear last. Past-deadline filtering remains in the ChaoXing parsing/client flow.
+- Assignment state is not persisted between runs. Do not add change-detection state unless the product requirement changes.
+- The parser keeps remaining-time data for filtering but user-facing output uses the fixed deadline date, or `未知` when the page has no explicit date.
+- Sticky notes are opt-in per user. They are written under the user's desktop folder, in the configured `folder_name` (default `学习通作业`), using a two-digit order prefix and the assignment title. Repeated checks overwrite matching names; generated notes no longer in the current list are removed.
+- `notify_when_empty` controls notifications for empty lists. `notify_on_error` controls notifications after a fetch error.
 
-## Important
+## Credentials and local files
 
-- **`stalker_config.json` contains real credentials** — do not commit it. Add it to `.gitignore`. The template is generated by `--init-config`.
-- There are no tests. When making changes to the scraping logic or the login flow, verify against the actual ChaoXing site — the HTML structure and API endpoints can change without notice.
-- The `AES_KEY` is a hardcoded constant extracted from the ChaoXing login page JavaScript; it may need updating if ChaoXing changes it.
+`stalker_config.json` may contain real account passwords and notification secrets. It is ignored by Git; never include its values in logs, commits, or example snippets. GitHub Actions reads the full configuration from the `CONFIG_JSON` repository secret. The AES login key is a platform constant, not a user credential.
+
+## Implementation notes
+
+- `chaoxing/` contains platform-specific authentication and parsing code; platform HTML and endpoints can change.
+- Notifiers implement `Notifier.send(subject, message) -> bool`. Register new channels in `notifiers/factory.py` and add tests for their construction and behavior.
+- Keep OS-specific desktop path handling in `sticky_notes.py` and preserve both XDG desktop discovery on Linux and Windows desktop handling.

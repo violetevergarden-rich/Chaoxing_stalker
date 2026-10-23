@@ -4,7 +4,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
-from notifiers import Notifier
+from chaoxing_stalker.notifiers.base import Notifier
 
 
 class EmailNotifier(Notifier):

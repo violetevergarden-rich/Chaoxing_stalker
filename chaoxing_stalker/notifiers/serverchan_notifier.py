@@ -1,6 +1,6 @@
 import requests
 
-from notifiers import Notifier
+from chaoxing_stalker.notifiers.base import Notifier
 
 
 class ServerChanNotifier(Notifier):

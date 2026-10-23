@@ -1,0 +1,1 @@
+"""ChaoXing assignment client implementation."""

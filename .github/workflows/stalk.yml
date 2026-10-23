@@ -32,14 +32,7 @@ jobs:
         env:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
 
-      - name: Restore state cache
-        uses: actions/cache@v4
-        with:
-          path: stalker_state.json
-          key: stalker-state-${{ github.run_id }}
-          restore-keys: stalker-state-
-
       - name: Run check
         env:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
-        run: python3 stalker.py --one-shot
+        run: python3 -m chaoxing_stalker
