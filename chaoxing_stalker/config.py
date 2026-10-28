@@ -18,7 +18,7 @@ CONFIG_TEMPLATE = {
             },
             "notifications": {
                 "email": {
-                    "enabled": True,
+                    "enabled": False,
                     "smtp_host": "smtp.qq.com",
                     "smtp_port": 465,
                     "use_ssl": True,
@@ -44,8 +44,10 @@ CONFIG_TEMPLATE = {
 }
 
 
-def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
-    env_config = os.environ.get("CONFIG_JSON")
+def load_config(
+    path: str = DEFAULT_CONFIG_PATH, *, use_environment: bool = True
+) -> dict:
+    env_config = os.environ.get("CONFIG_JSON") if use_environment else None
     if env_config:
         return json.loads(env_config)
     if not os.path.exists(path):

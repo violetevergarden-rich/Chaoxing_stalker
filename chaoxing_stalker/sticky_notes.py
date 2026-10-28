@@ -3,6 +3,8 @@
 import hashlib
 import os
 import re
+import shlex
+import sys
 import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -10,6 +12,8 @@ from pathlib import Path
 from chaoxing_stalker.assignment_types import Assignment
 
 DEFAULT_STICKY_NOTE_FOLDER = "学习通作业"
+REFRESH_SHELL_SCRIPT = "refresh_sticky_notes.sh"
+REFRESH_WINDOWS_SCRIPT = "refresh_sticky_notes.bat"
 
 
 def desktop_directory(
@@ -97,12 +101,55 @@ def write_sticky_notes(
         entries.append((path, content))
 
     target_directory.mkdir(parents=True, exist_ok=True)
+    _write_refresh_scripts(target_directory)
     for path, content in entries:
         _atomic_write(path, content)
 
     for old_note in target_directory.glob("*.txt"):
         if old_note.name not in filenames and _is_generated_note(old_note):
             old_note.unlink()
+
+
+def _write_refresh_scripts(target_directory: Path) -> None:
+    """Create launchers that refresh notes from this checkout's configuration."""
+    project_directory = Path(__file__).resolve().parent.parent
+    config_path = project_directory / "stalker_config.json"
+    python_executable = sys.executable
+    shell_project_directory = shlex.quote(str(project_directory))
+    shell_script = "\n".join(
+        (
+            "#!/usr/bin/env bash",
+            "set -e",
+            'SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"',
+            f"cd {shell_project_directory}",
+            f"{shlex.quote(python_executable)} -m chaoxing_stalker.refresh_sticky_notes \\",
+            f"  --config {shlex.quote(str(config_path))} \\",
+            '  --notes-directory "$SCRIPT_DIR"',
+            "",
+        )
+    )
+    _atomic_write(target_directory / REFRESH_SHELL_SCRIPT, shell_script)
+    (target_directory / REFRESH_SHELL_SCRIPT).chmod(0o755)
+
+    # Double percent signs are required for literal percent characters in a
+    # batch file; the project path is otherwise always quoted.
+    windows_project_directory = str(project_directory).replace("%", "%%")
+    windows_config_path = str(config_path).replace("%", "%%")
+    windows_python_executable = python_executable.replace("%", "%%")
+    windows_script = "\r\n".join(
+        (
+            "@echo off",
+            'set "PROJECT_DIR=' + windows_project_directory + '"',
+            'set "SCRIPT_DIR=%~dp0"',
+            'cd /d "%PROJECT_DIR%"',
+            f'"{windows_python_executable}" -m chaoxing_stalker.refresh_sticky_notes ^',
+            f'  --config "{windows_config_path}" ^',
+            '  --notes-directory "%SCRIPT_DIR%"',
+            "if errorlevel 1 pause",
+            "",
+        )
+    )
+    _atomic_write(target_directory / REFRESH_WINDOWS_SCRIPT, windows_script)
 
 
 def _is_generated_note(path: Path) -> bool:

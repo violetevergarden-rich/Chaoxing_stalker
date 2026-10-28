@@ -47,7 +47,7 @@ python3 -m chaoxing_stalker --config my_config.json
       },
       "notifications": {
         "email": {
-          "enabled": true,
+          "enabled": false,
           "smtp_host": "smtp.qq.com",
           "smtp_port": 465,
           "use_ssl": true,
@@ -77,6 +77,8 @@ python3 -m chaoxing_stalker --config my_config.json
 - `serverchan.send_key` 可在 [Server酱](https://sct.ftqq.com/) 获取。
 - 将 `sticky_note.enabled` 设为 `true` 可启用小纸条模式。纸条保存在桌面下的 `folder_name` 文件夹中；文件夹不存在时会自动创建，默认名称为 `学习通作业`。
 - 每项作业的文件名使用两位数字前缀和作业标题；重复运行会更新对应文件。每次检查按截止时间重新从 `00` 编号。相同标题会附加课程名以区分。
+- 小纸条文件夹会生成 `refresh_sticky_notes.sh`（Ubuntu）和 `refresh_sticky_notes.bat`（Windows）。运行对应脚本会清空该文件夹中的其他文件和子目录，重新查询该文件夹对应用户的作业并生成纸条；不会发送邮件或 Server 酱通知。两个脚本会保留在文件夹中。
+- 刷新脚本使用生成它的 Python 解释器、项目目录中的 `stalker_config.json`，因此该解释器需安装 `requirements.txt` 中的依赖。项目移动后，请从新位置重新运行一次小纸条检查以更新脚本路径。
 - `notification_behaviour.notify_when_empty` 控制无未提交作业时是否通知；`notify_on_error` 控制检查失败时是否通知。
 
 ## 定时运行

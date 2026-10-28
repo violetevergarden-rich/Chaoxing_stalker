@@ -1,8 +1,15 @@
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
-from chaoxing_stalker.sticky_notes import _validate_prefixes, desktop_directory, write_sticky_notes
+from chaoxing_stalker.sticky_notes import (
+    REFRESH_SHELL_SCRIPT,
+    REFRESH_WINDOWS_SCRIPT,
+    _validate_prefixes,
+    desktop_directory,
+    write_sticky_notes,
+)
 
 
 class StickyNoteTests(unittest.TestCase):
@@ -105,6 +112,24 @@ class StickyNoteTests(unittest.TestCase):
             self.assertTrue(
                 (Path(directory) / "课程提醒" / "00_Homework.txt").is_file()
             )
+
+    def test_refresh_scripts_are_created_and_updated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_sticky_notes("Alice", [], directory)
+            folder = Path(directory) / "学习通作业"
+            shell_script = folder / REFRESH_SHELL_SCRIPT
+            windows_script = folder / REFRESH_WINDOWS_SCRIPT
+            self.assertTrue(shell_script.is_file())
+            self.assertTrue(windows_script.is_file())
+            self.assertTrue(shell_script.stat().st_mode & 0o100)
+            self.assertIn("--notes-directory", shell_script.read_text(encoding="utf-8"))
+            self.assertIn(sys.executable, shell_script.read_text(encoding="utf-8"))
+            self.assertIn("refresh_sticky_notes", windows_script.read_text(encoding="utf-8"))
+
+            old_content = shell_script.read_text(encoding="utf-8")
+            shell_script.write_text("old launcher", encoding="utf-8")
+            write_sticky_notes("Alice", [], directory)
+            self.assertEqual(shell_script.read_text(encoding="utf-8"), old_content)
 
     def test_old_generated_notes_are_removed_but_other_text_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -15,7 +15,7 @@ class RetryTests(unittest.TestCase):
                 raise ConnectionError("temporary")
             return "done"
 
-        with patch("retry.time.sleep") as sleep:
+        with patch("chaoxing_stalker.retry.time.sleep") as sleep:
             self.assertEqual(operation(), "done")
         self.assertEqual(len(attempts), 3)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [2, 4])

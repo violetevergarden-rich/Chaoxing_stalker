@@ -56,6 +56,14 @@ class ConfigTests(unittest.TestCase):
         with patch.dict(os.environ, {"CONFIG_JSON": json.dumps(expected)}):
             self.assertEqual(load_config("missing.json"), expected)
 
+    def test_environment_config_can_be_ignored_for_local_refresh(self):
+        expected = valid_config()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(json.dumps(expected), encoding="utf-8")
+            with patch.dict(os.environ, {"CONFIG_JSON": "{}"}):
+                self.assertEqual(load_config(str(path), use_environment=False), expected)
+
     def test_template_contains_no_schedule_settings(self):
         self.assertNotIn("schedule", CONFIG_TEMPLATE)
         self.assertNotIn("run_hours", CONFIG_TEMPLATE["users"][0])
@@ -64,6 +72,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(
             CONFIG_TEMPLATE["users"][0]["sticky_note"]["folder_name"], "学习通作业"
         )
+
+    def test_email_notifications_are_disabled_by_default(self):
+        self.assertFalse(CONFIG_TEMPLATE["users"][0]["notifications"]["email"]["enabled"])
 
     def test_template_is_written_as_json(self):
         with tempfile.TemporaryDirectory() as directory:

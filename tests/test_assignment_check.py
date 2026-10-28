@@ -53,7 +53,7 @@ def provider_factory(provider):
 
 class AssignmentCheckTests(unittest.TestCase):
     def test_sticky_notes_are_only_written_when_enabled(self):
-        with patch("services.assignment_check.write_sticky_notes") as write_notes:
+        with patch("chaoxing_stalker.services.assignment_check.write_sticky_notes") as write_notes:
             check_and_notify(
                 {
                     **USER_CONFIG,
@@ -77,7 +77,7 @@ class AssignmentCheckTests(unittest.TestCase):
     def test_sticky_notes_follow_deadline_order(self):
         later = {**ASSIGNMENT, "title": "Later", "deadline": "2026-11-01 23:59"}
         sooner = {**ASSIGNMENT, "title": "Sooner", "deadline": "2026-10-25 23:59"}
-        with patch("services.assignment_check.write_sticky_notes") as write_notes:
+        with patch("chaoxing_stalker.services.assignment_check.write_sticky_notes") as write_notes:
             check_and_notify(
                 {
                     **USER_CONFIG,
